@@ -1,5 +1,6 @@
 import datetime
 import os
+import logging
 
 import dotenv
 from azure.core.exceptions import ClientAuthenticationError
@@ -7,6 +8,7 @@ from azure.identity import DefaultAzureCredential
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 from semantic_kernel import Kernel
+from semantic_kernel.utils.logging import setup_logging
 from semantic_kernel.connectors.ai.function_call_behavior import \
     FunctionCallBehavior
 from semantic_kernel.connectors.ai.open_ai.prompt_execution_settings.azure_chat_prompt_execution_settings import \
@@ -22,20 +24,27 @@ from semantic_kernel.functions.kernel_arguments import KernelArguments
 
 dotenv.load_dotenv()
 
+logging.basicConfig(level=logging.INFO)
+setup_logging()
+logger = logging.getLogger(__name__)
+
 app = FastAPI()
 
 pool_management_endpoint = os.getenv("POOL_MANAGEMENT_ENDPOINT")
 azure_openai_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
 
+
 def auth_callback_factory(scope):
     auth_token = None
+
     async def auth_callback() -> str:
         """Auth callback for the SessionsPythonTool.
         This is a sample auth callback that shows how to use Azure's DefaultAzureCredential
         to get an access token.
         """
         nonlocal auth_token
-        current_utc_timestamp = int(datetime.datetime.now(datetime.timezone.utc).timestamp())
+        current_utc_timestamp = int(datetime.datetime.now(
+            datetime.timezone.utc).timestamp())
 
         if not auth_token or auth_token.expires_on < current_utc_timestamp:
             credential = DefaultAzureCredential()
@@ -49,7 +58,7 @@ def auth_callback_factory(scope):
                 ) from cae
 
         return auth_token.token
-    
+
     return auth_callback
 
 
@@ -65,7 +74,8 @@ async def chat(message: str):
     service_id = "sessions-tool"
     chat_service = AzureChatCompletion(
         service_id=service_id,
-        ad_token_provider=auth_callback_factory("https://cognitiveservices.azure.com/.default"),
+        ad_token_provider=auth_callback_factory(
+            "https://cognitiveservices.azure.com/.default"),
         endpoint=azure_openai_endpoint,
         deployment_name="gpt-35-turbo",
     )
@@ -73,7 +83,8 @@ async def chat(message: str):
 
     sessions_tool = SessionsPythonTool(
         pool_management_endpoint,
-        auth_callback=auth_callback_factory("https://dynamicsessions.io/.default"),
+        auth_callback=auth_callback_factory(
+            "https://dynamicsessions.io/.default"),
     )
     kernel.add_plugin(sessions_tool, "SessionsTool")
 
@@ -83,10 +94,12 @@ async def chat(message: str):
         function_name="Chat",
     )
 
-    req_settings = AzureChatPromptExecutionSettings(service_id=service_id, tool_choice="auto")
+    req_settings = AzureChatPromptExecutionSettings(
+        service_id=service_id, tool_choice="auto")
 
     filter = {"excluded_plugins": ["ChatBot"]}
-    req_settings.function_call_behavior = FunctionCallBehavior.EnableFunctions(auto_invoke=True, filters=filter)
+    req_settings.function_call_behavior = FunctionCallBehavior.EnableFunctions(
+        auto_invoke=True, filters=filter)
 
     arguments = KernelArguments(settings=req_settings)
 
